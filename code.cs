@@ -1,8 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Newtonsoft.Json;
 using EdiFileProcessor.Models;
 using EdiFileProcessor.Helpers;
-using System;
-using System.Linq;
-using System.IO;
 
 namespace EdiFileProcessor
 {
@@ -10,61 +12,95 @@ namespace EdiFileProcessor
     {
         static void Main(string[] args)
         {
-            try
+            Console.WriteLine("=== HIPAA 834 EDI File Processor ===");
+
+            var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ediConfig.json");
+            if (!File.Exists(configPath))
             {
-                string configPath = "ediConfig.json";
-                EdiConfig config = ConfigLoader.Load(configPath);
+                Console.WriteLine("❌ ediConfig.json not found!");
+                return;
+            }
 
-                // Decide which frequencies should run today
-                bool isDaily = true;
-                bool isMonthly = DateTime.Today.Day == 1;
+            var configJson = File.ReadAllText(configPath);
+            var config = JsonConvert.DeserializeObject<EdiConfig>(configJson);
 
-                var dirsToProcess = config.States
-                    .Where(s =>
-                        (isDaily && s.Frequency.Equals("Daily", StringComparison.OrdinalIgnoreCase)) ||
-                        (isMonthly && s.Frequency.Equals("Monthly", StringComparison.OrdinalIgnoreCase))
-                    )
-                    .SelectMany(s => s.Directories)
-                    .ToList();
+            string workingRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Working");
+            string reportRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Report");
+            string archiveRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Archive", DateTime.Now.ToString("yyyy-MM-dd"));
 
-                if (!dirsToProcess.Any())
+            Directory.CreateDirectory(workingRoot);
+            Directory.CreateDirectory(reportRoot);
+            Directory.CreateDirectory(archiveRoot);
+
+            foreach (var state in config.States)
+            {
+                if (!ShouldProcessToday(state.Frequency)) continue;
+
+                Console.WriteLine($"\n📂 Processing state: {state.StateCode} ({state.Frequency})");
+
+                foreach (var dir in state.Directories)
                 {
-                    Console.WriteLine("No directories to process today based on config and date.");
-                    return;
-                }
-
-                Console.WriteLine($"📁 Directories to process today: {dirsToProcess.Count}");
-                foreach (var dir in dirsToProcess)
-                {
-                    Console.WriteLine($" → {dir}");
-                    
-                    // Sample code to copy files (can expand later)
-                    if (Directory.Exists(dir))
+                    if (!Directory.Exists(dir))
                     {
-                        string[] files = Directory.GetFiles(dir, "*.edi");
-                        foreach (var file in files)
-                        {
-                            Console.WriteLine($"    - Found file: {Path.GetFileName(file)}");
+                        Console.WriteLine($"  ⚠ Skipping. Directory not found: {dir}");
+                        continue;
+                    }
 
-                            // TODO: Copy to local temp folder and call validation
-                            // TODO: Archive if successful
+                    var ediFiles = Directory.GetFiles(dir, "*.edi");
+                    if (ediFiles.Length == 0)
+                    {
+                        Console.WriteLine("  ℹ No .edi files found.");
+                        continue;
+                    }
+
+                    string stateWorkDir = Path.Combine(workingRoot, state.StateCode);
+                    string stateArchiveDir = Path.Combine(archiveRoot, state.StateCode);
+                    Directory.CreateDirectory(stateWorkDir);
+                    Directory.CreateDirectory(stateArchiveDir);
+
+                    foreach (var file in ediFiles)
+                    {
+                        string fileName = Path.GetFileName(file);
+                        string localFilePath = Path.Combine(stateWorkDir, fileName);
+                        string reportFilePath = Path.Combine(reportRoot, $"{Path.GetFileNameWithoutExtension(fileName)}_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx");
+                        string archiveFilePath = Path.Combine(stateArchiveDir, fileName);
+
+                        try
+                        {
+                            File.Copy(file, localFilePath, true);
+                            Console.WriteLine($"    ✔ Copied: {fileName}");
+
+                            // 🏥 HIPAA Validation Logic
+                            HipaaValidator.ValidateFile(localFilePath, reportFilePath);
+                            Console.WriteLine($"    📊 Report Generated: {reportFilePath}");
+
+                            // 🗄 Archive
+                            File.Copy(localFilePath, archiveFilePath, true);
+                            Console.WriteLine($"    📁 Archived: {archiveFilePath}");
+
+                            // Delete copied working file if needed
+                            File.Delete(localFilePath);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"    ❌ Error: {ex.Message}");
                         }
                     }
-                    else
-                    {
-                        Console.WriteLine($"    - Directory not found: {dir}");
-                    }
                 }
-
-                Console.WriteLine("\n✅ Directory scan completed.");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ ERROR: {ex.Message}");
             }
 
-            Console.WriteLine("\nPress any key to exit...");
-            Console.ReadKey();
+            Console.WriteLine("\n✅ Processing complete.");
+        }
+
+        static bool ShouldProcessToday(string frequency)
+        {
+            if (string.Equals(frequency, "Daily", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (string.Equals(frequency, "Monthly", StringComparison.OrdinalIgnoreCase))
+                return DateTime.Today.Day == 1; // Only run Monthly on 1st
+
+            return false;
         }
     }
 }
