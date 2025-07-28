@@ -1,0 +1,69 @@
+{
+  "States": [
+    {
+      "StateCode": "FFM",
+      "Frequency": "Daily",
+      "Directories": [
+        "\\\\nasv0066\\communitystate_be\\Exchanges\\FFM\\Outbound\\834"
+      ]
+    },
+    {
+      "StateCode": "FFM",
+      "Frequency": "Monthly",
+      "Directories": [
+        "\\\\nasv0066\\communitystate_be\\Exchanges\\FFM\\Outbound\\RCNI"
+      ]
+    },
+    {
+      "StateCode": "WA",
+      "Frequency": "Daily",
+      "Directories": [
+        "\\\\nasv0066\\communitystate_be\\Exchanges\\WA\\Outbound\\834"
+      ]
+    },
+    {
+      "StateCode": "WA",
+      "Frequency": "Monthly",
+      "Directories": [
+        "\\\\nasv0066\\communitystate_be\\Exchanges\\WA\\Outbound\\FCA-XML"
+      ]
+    },
+    {
+      "StateCode": "MD",
+      "Frequency": "Daily",
+      "Directories": [
+        "\\\\nasv0066\\communitystate_be\\Exchanges\\MD\\Outbound\\834"
+      ]
+    },
+    {
+      "StateCode": "CO",
+      "Frequency": "Daily",
+      "Directories": [
+        "\\\\nasv0066\\communitystate_be\\Exchanges\\CO\\Outbound\\834_Daily\\C4CHO",
+        "\\\\nasv0066\\communitystate_be\\Exchanges\\CO\\Outbound\\834_Daily\\COCO"
+      ]
+    },
+    {
+      "StateCode": "CO",
+      "Frequency": "Monthly",
+      "Directories": [
+        "\\\\nasv0066\\communitystate_be\\Exchanges\\CO\\Outbound\\RCNI\\COCO",
+        "\\\\nasv0066\\communitystate_be\\Exchanges\\CO\\Outbound\\RCNI\\C4CHO"
+      ]
+    },
+    {
+      "StateCode": "NM",
+      "Frequency": "Daily",
+      "Directories": [
+        "\\\\nasv0066\\communitystate_be\\Exchanges\\NM\\Outbound\\834"
+      ]
+    },
+    {
+      "StateCode": "NM",
+      "Frequency": "Monthly",
+      "Directories": [
+        "\\\\nasv0066\\communitystate_be\\Exchanges\\NM\\Outbound\\RCNI"
+      ]
+    }
+  ]
+}
