@@ -1,4 +1,5 @@
 {
+  "ValidFileExtensions": [ ".edi", ".p", ".dat" ],
   "States": [
     {
       "StateCode": "FFM",
@@ -15,27 +16,6 @@
       ]
     },
     {
-      "StateCode": "WA",
-      "Frequency": "Daily",
-      "Directories": [
-        "\\\\nasv0066\\communitystate_be\\Exchanges\\WA\\Outbound\\834"
-      ]
-    },
-    {
-      "StateCode": "WA",
-      "Frequency": "Monthly",
-      "Directories": [
-        "\\\\nasv0066\\communitystate_be\\Exchanges\\WA\\Outbound\\FCA-XML"
-      ]
-    },
-    {
-      "StateCode": "MD",
-      "Frequency": "Daily",
-      "Directories": [
-        "\\\\nasv0066\\communitystate_be\\Exchanges\\MD\\Outbound\\834"
-      ]
-    },
-    {
       "StateCode": "CO",
       "Frequency": "Daily",
       "Directories": [
@@ -49,20 +29,6 @@
       "Directories": [
         "\\\\nasv0066\\communitystate_be\\Exchanges\\CO\\Outbound\\RCNI\\COCO",
         "\\\\nasv0066\\communitystate_be\\Exchanges\\CO\\Outbound\\RCNI\\C4CHO"
-      ]
-    },
-    {
-      "StateCode": "NM",
-      "Frequency": "Daily",
-      "Directories": [
-        "\\\\nasv0066\\communitystate_be\\Exchanges\\NM\\Outbound\\834"
-      ]
-    },
-    {
-      "StateCode": "NM",
-      "Frequency": "Monthly",
-      "Directories": [
-        "\\\\nasv0066\\communitystate_be\\Exchanges\\NM\\Outbound\\RCNI"
       ]
     }
   ]
