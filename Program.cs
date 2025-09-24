@@ -1,197 +1,148 @@
 using System;
+using System.Collections.Generic;
+using System.Configuration;
 using System.IO;
 using System.Linq;
-using System.Collections.Generic;
-using OfficeOpenXml;
-using OfficeOpenXml.Drawing.Chart;
-using OfficeOpenXml.Style;
 using Microsoft.ML;
 using Microsoft.ML.Data;
-using System.Drawing;
 
-namespace FileProcessorWithAI
+namespace FileProcessor
 {
     class Program
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("=== File Processor with ML.NET Demo ===");
+            Console.WriteLine("=== File Processor with ML.NET ===");
 
-            string[] sourceDirectories = new string[]
+            var config = ConfigManager.LoadConfig("config.json");
+
+            foreach (var state in config.States)
             {
-                @"C:\NAS\State1",
-                @"C:\NAS\State2"
-            };
+                Console.WriteLine($"Processing state: {state.Name} ({state.Frequency})");
 
-            string[] allowedExtensions = { ".edi", ".p", ".txt" };
-
-            foreach (var dir in sourceDirectories)
-            {
-                if (!Directory.Exists(dir))
+                foreach (var dir in state.Directories)
                 {
-                    Console.WriteLine($"⚠️ Directory not found: {dir}");
-                    continue;
-                }
+                    if (!Directory.Exists(dir))
+                    {
+                        Console.WriteLine($"Directory not found: {dir}");
+                        continue;
+                    }
 
-                Console.WriteLine($"\n🔍 Scanning directory: {dir}");
+                    // Setup working/report/archive folders under the source dir
+                    string workingPath = Path.Combine(dir, "Working");
+                    string reportPath = Path.Combine(dir, "Report");
+                    string archivePath = Path.Combine(dir, "Archive");
 
-                var files = Directory.EnumerateFiles(dir, "*.*", SearchOption.TopDirectoryOnly)
-                                     .Where(f => allowedExtensions.Contains(Path.GetExtension(f).ToLower()));
+                    Directory.CreateDirectory(workingPath);
+                    Directory.CreateDirectory(reportPath);
+                    Directory.CreateDirectory(archivePath);
 
-                foreach (var file in files)
-                {
-                    Console.WriteLine($"📂 Found file: {Path.GetFileName(file)}");
+                    // File types to look for
+                    string[] patterns = new[] { "*.edi", "*.p", "*.txt" };
 
-                    // Step 1: Copy file to Working folder
-                    string workingFolder = Path.Combine(dir, "Working");
-                    Directory.CreateDirectory(workingFolder);
-                    string destFile = Path.Combine(workingFolder, Path.GetFileName(file));
-                    File.Copy(file, destFile, true);
+                    var files = patterns.SelectMany(p => Directory.GetFiles(dir, p)).ToList();
 
-                    // Step 2: Run ML.NET anomaly detection
-                    bool isAnomaly = RunMLAnomalyDetection(file);
+                    if (files.Count == 0)
+                    {
+                        Console.WriteLine($"No files found in {dir}");
+                        continue;
+                    }
 
-                    // Step 3: Save AI result into Excel report (with daily summary chart & highlighting)
-                    string reportFolder = Path.Combine(dir, "Reports");
-                    Directory.CreateDirectory(reportFolder);
-                    string reportPath = Path.Combine(reportFolder, "AI_Report.xlsx");
+                    Console.WriteLine($"{files.Count} files found in {dir}");
 
-                    SavePredictionToExcel(reportPath, file, isAnomaly);
+                    // Run ML.NET anomaly detection
+                    RunMLAnomalyDetection(files, reportPath);
 
-                    // Step 4: Move original file to Archive
-                    string archiveFolder = Path.Combine(dir, "Archive");
-                    Directory.CreateDirectory(archiveFolder);
-                    string archivedFile = Path.Combine(archiveFolder, Path.GetFileName(file));
-                    File.Move(file, archivedFile, true);
+                    foreach (var file in files)
+                    {
+                        try
+                        {
+                            string fileName = Path.GetFileName(file);
+                            string destFile = Path.Combine(workingPath, fileName);
 
-                    Console.WriteLine($"📦 Archived: {archivedFile}");
+                            File.Copy(file, destFile, true);
+
+                            Console.WriteLine($"Copied {fileName} → Working folder");
+
+                            // Simulate validation / processing
+                            // TODO: integrate actual HIPS validator here
+                            string reportFile = Path.Combine(reportPath, fileName + ".report.txt");
+                            File.WriteAllText(reportFile, $"Processed {fileName} at {DateTime.Now}");
+
+                            Console.WriteLine($"Report generated: {reportFile}");
+
+                            // Move to Archive
+                            string archivedFile = Path.Combine(archivePath, fileName);
+                            File.Move(file, archivedFile);
+
+                            Console.WriteLine($"Archived {fileName}");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error processing {file}: {ex.Message}");
+                        }
+                    }
                 }
             }
 
-            Console.WriteLine("\n=== Processing Completed ===");
+            Console.WriteLine("=== Processing Complete ===");
+            Console.ReadLine();
         }
 
-        // ML.NET Input class
-        public class FileData { public float FileSize { get; set; } }
-
-        // ML.NET Output class
-        public class Prediction { [VectorType(3)] public double[] Prediction { get; set; } }
-
-        static bool RunMLAnomalyDetection(string filePath)
+        /// <summary>
+        /// Use ML.NET anomaly detection to detect unusual file sizes
+        /// </summary>
+        static void RunMLAnomalyDetection(List<string> files, string reportPath)
         {
             var mlContext = new MLContext();
 
-            long fileSize = new FileInfo(filePath).Length;
-            var data = new List<FileData>();
-            for (int i = 0; i < 20; i++)
+            var data = files.Select(f => new FileRecord
             {
-                data.Add(new FileData { FileSize = (float)(fileSize * (i < 18 ? 1 : 1.5)) });
-            }
+                FileName = Path.GetFileName(f),
+                Size = new FileInfo(f).Length
+            });
 
-            var dataView = mlContext.Data.LoadFromEnumerable(data);
+            IDataView dataView = mlContext.Data.LoadFromEnumerable(data);
+
             var pipeline = mlContext.Transforms.DetectIidSpike(
-                outputColumnName: nameof(Prediction.Prediction),
-                inputColumnName: nameof(FileData.FileSize),
+                outputColumnName: nameof(FilePrediction.Prediction),
+                inputColumnName: nameof(FileRecord.Size),
                 confidence: 95,
-                pvalueHistoryLength: 8);
+                pvalueHistoryLength: 10);
 
             var model = pipeline.Fit(dataView);
             var transformed = model.Transform(dataView);
-            var predictions = mlContext.Data.CreateEnumerable<Prediction>(transformed, reuseRowObject: false).ToList();
-            var last = predictions.Last().Prediction;
 
-            return last[0] == 1; // Spike detected
-        }
+            var predictions = mlContext.Data.CreateEnumerable<FilePrediction>(transformed, reuseRowObject: false).ToList();
 
-        static void SavePredictionToExcel(string reportPath, string filePath, bool isAnomaly)
-        {
-            FileInfo reportFile = new FileInfo(reportPath);
-            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-
-            using (ExcelPackage package = new ExcelPackage(reportFile))
+            string anomalyReport = Path.Combine(reportPath, $"AnomalyReport_{DateTime.Now:yyyyMMddHHmmss}.txt");
+            using (var sw = new StreamWriter(anomalyReport))
             {
-                var ws = package.Workbook.Worksheets.FirstOrDefault() ?? package.Workbook.Worksheets.Add("AI_Report");
-
-                int row = ws.Dimension?.End.Row + 1 ?? 1;
-                if (row == 1)
+                sw.WriteLine("=== Anomaly Detection Report ===");
+                sw.WriteLine($"Generated: {DateTime.Now}");
+                sw.WriteLine("--------------------------------");
+                int i = 0;
+                foreach (var record in data.Zip(predictions, (d, p) => new { d, p }))
                 {
-                    ws.Cells[row, 1].Value = "Timestamp";
-                    ws.Cells[row, 2].Value = "FileName";
-                    ws.Cells[row, 3].Value = "IsAnomaly";
-                    row++;
+                    string status = record.p.Prediction[0] == 1 ? "ANOMALY" : "Normal";
+                    sw.WriteLine($"{record.d.FileName,-30} | Size: {record.d.Size,10} | {status}");
+                    i++;
                 }
-
-                ws.Cells[row, 1].Value = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                ws.Cells[row, 2].Value = Path.GetFileName(filePath);
-                ws.Cells[row, 3].Value = isAnomaly ? 1 : 0;
-
-                // Highlight anomaly row in red
-                if (isAnomaly)
-                {
-                    using (var rng = ws.Cells[row, 1, row, 3])
-                    {
-                        rng.Style.Fill.PatternType = ExcelFillStyle.Solid;
-                        rng.Style.Fill.BackgroundColor.SetColor(Color.LightPink);
-                        rng.Style.Font.Color.SetColor(Color.DarkRed);
-                        rng.Style.Font.Bold = true;
-                    }
-                }
-
-                // Daily summary sheet
-                var wsSummary = package.Workbook.Worksheets.FirstOrDefault(s => s.Name == "DailySummary")
-                                ?? package.Workbook.Worksheets.Add("DailySummary");
-
-                var grouped = ws.Cells[2, 1, ws.Dimension.End.Row, 3]
-                                .GroupBy(c => DateTime.Parse(c.Worksheet.Cells[c.Start.Row, 1].Text).Date)
-                                .Select(g => new
-                                {
-                                    Date = g.Key,
-                                    AnomalyCount = g.Count(c => c.Worksheet.Cells[c.Start.Row, 3].Text == "1")
-                                })
-                                .OrderBy(x => x.Date)
-                                .ToList();
-
-                wsSummary.Cells.Clear();
-                wsSummary.Cells[1, 1].Value = "Date";
-                wsSummary.Cells[1, 2].Value = "AnomalyCount";
-
-                int sRow = 2;
-                foreach (var g in grouped)
-                {
-                    wsSummary.Cells[sRow, 1].Value = g.Date.ToString("yyyy-MM-dd");
-                    wsSummary.Cells[sRow, 2].Value = g.AnomalyCount;
-
-                    // Highlight days with anomalies
-                    if (g.AnomalyCount > 0)
-                    {
-                        using (var rng = wsSummary.Cells[sRow, 1, sRow, 2])
-                        {
-                            rng.Style.Fill.PatternType = ExcelFillStyle.Solid;
-                            rng.Style.Fill.BackgroundColor.SetColor(Color.LightYellow);
-                            rng.Style.Font.Color.SetColor(Color.DarkOrange);
-                            rng.Style.Font.Bold = true;
-                        }
-                    }
-
-                    sRow++;
-                }
-
-                // Add chart if not already present
-                if (!wsSummary.Drawings.Any())
-                {
-                    var chart = wsSummary.Drawings.AddChart("DailyAnomaliesChart", eChartType.LineMarkers);
-                    chart.Title.Text = "Daily Anomaly Trend";
-                    chart.SetPosition(1, 0, 3, 0);
-                    chart.SetSize(600, 400);
-
-                    var series = chart.Series.Add(wsSummary.Cells[2, 2, sRow - 1, 2], wsSummary.Cells[2, 1, sRow - 1, 1]);
-                    series.Header = "Anomalies per Day";
-                }
-
-                package.Save();
             }
 
-            Console.WriteLine($"📊 Report updated (with highlighting): {reportPath}");
+            Console.WriteLine($"ML.NET anomaly report saved → {anomalyReport}");
         }
+    }
+
+    public class FileRecord
+    {
+        public string FileName { get; set; }
+        public float Size { get; set; }
+    }
+
+    public class FilePrediction
+    {
+        [VectorType(3)]
+        public double[] Prediction { get; set; }
     }
 }
