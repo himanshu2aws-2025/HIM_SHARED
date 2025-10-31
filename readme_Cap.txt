@@ -1,16 +1,13 @@
 # -----------------------------------
-# Capstone Project - Text Splitting for RAG
+# Capstone Project - Text Splitting for RAG (Fixed)
 # -----------------------------------
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-# Ensure your dataset has a text column (update if name differs)
-text_column = "text"  # Change this if your CSV uses a different column name
+# Use correct column name based on your dataset
+text_column = "context"  # ✅ Updated from 'text' to 'context'
 
-if text_column not in df.columns:
-    raise ValueError(f"❌ Column '{text_column}' not found. Available columns: {list(df.columns)}")
-
-# Combine all text entries into one large string (if multiple rows)
+# Combine all text entries into one large string
 all_text = "\n\n".join(df[text_column].astype(str).tolist())
 
 # Initialize text splitter
