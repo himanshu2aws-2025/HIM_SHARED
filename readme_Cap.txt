@@ -1,26 +1,30 @@
 # -----------------------------------
-# Capstone Project - Text Splitting for RAG (Fixed)
+# Capstone Project - Create and Store Embeddings
 # -----------------------------------
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
 
-# Use correct column name based on your dataset
-text_column = "context"  # ✅ Updated from 'text' to 'context'
+# Read environment variables
+azure_api_key = os.getenv("AZURE_OPENAI_API_KEY")
+azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
 
-# Combine all text entries into one large string
-all_text = "\n\n".join(df[text_column].astype(str).tolist())
+if not azure_api_key or not azure_endpoint:
+    raise ValueError("❌ Missing Azure OpenAI credentials. Please set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT.")
 
-# Initialize text splitter
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,     # Each chunk has up to 1000 characters
-    chunk_overlap=100,   # Overlap ensures context continuity
-    separators=["\n\n", "\n", ".", "!", "?", " ", ""]
+# Initialize Azure OpenAI Embeddings
+embeddings = OpenAIEmbeddings(
+    model="text-embedding-3-small",  # Or use 'text-embedding-ada-002' depending on setup
+    openai_api_key=azure_api_key,
+    openai_api_base=azure_endpoint,
 )
 
-# Split text into chunks
-chunks = text_splitter.split_text(all_text)
+# Create FAISS vector store from chunks
+print("🔄 Creating embeddings, this may take a minute...")
+vector_store = FAISS.from_texts(chunks, embedding=embeddings)
 
-print(f"✅ Successfully split text into {len(chunks)} chunks.")
-print("\n🔍 Sample Chunks:")
-for i, chunk in enumerate(chunks[:3]):
-    print(f"\nChunk {i+1}:\n{chunk[:300]}...")
+# Save the FAISS index locally (Databricks path)
+faiss_index_path = "Data/faiss_index"
+vector_store.save_local(faiss_index_path)
+
+print(f"✅ Embeddings created and FAISS index saved at: {faiss_index_path}")
