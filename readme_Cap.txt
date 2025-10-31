@@ -1,30 +1,55 @@
-# -----------------------------------
-# Capstone Project - Create and Store Embeddings
-# -----------------------------------
+import os
+import json
+import httpx
+from dotenv import load_dotenv
+from openai import AzureOpenAI
 
-from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
+# Load environment variables
+load_dotenv("./Data/UAIS_vars.env")
 
-# Read environment variables
-azure_api_key = os.getenv("AZURE_OPENAI_API_KEY")
-azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+# Environment variables from UAIS_vars.env
+AZURE_OPENAI_ENDPOINT = os.environ["MODEL_ENDPOINT"]
+OPENAI_API_VERSION = os.environ["API_VERSION"]
+EMBEDDINGS_DEPLOYMENT_NAME = os.environ["EMBEDDINGS_MODEL_NAME"]
+PROJECT_ID = os.environ["PROJECT_ID"]
 
-if not azure_api_key or not azure_endpoint:
-    raise ValueError("❌ Missing Azure OpenAI credentials. Please set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT.")
+# ---- Get OAuth2 token from UAIS ----
+auth_url = "https://api.uhg.com/oauth2/token"
+scope = "https://api.uhg.com/.default"
+grant_type = "client_credentials"
 
-# Initialize Azure OpenAI Embeddings
-embeddings = OpenAIEmbeddings(
-    model="text-embedding-3-small",  # Or use 'text-embedding-ada-002' depending on setup
-    openai_api_key=azure_api_key,
-    openai_api_base=azure_endpoint,
+client_id = dbutils.secrets.get(scope="AIML_Training", key="client_id")
+client_secret = dbutils.secrets.get(scope="AIML_Training", key="client_secret")
+
+async def get_access_token():
+    async with httpx.AsyncClient() as client:
+        data = {
+            "grant_type": grant_type,
+            "scope": scope,
+            "client_id": client_id,
+            "client_secret": client_secret
+        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        resp = await client.post(auth_url, headers=headers, data=data, timeout=120)
+        token = resp.json().get("access_token")
+        return token
+
+import asyncio
+access_token = asyncio.run(get_access_token())
+
+# ---- Initialize Azure OpenAI Client ----
+embeddings_client = AzureOpenAI(
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    api_version=OPENAI_API_VERSION,
+    api_key=access_token
 )
 
-# Create FAISS vector store from chunks
-print("🔄 Creating embeddings, this may take a minute...")
-vector_store = FAISS.from_texts(chunks, embedding=embeddings)
+print("✅ Azure OpenAI client authenticated successfully.")
 
-# Save the FAISS index locally (Databricks path)
-faiss_index_path = "Data/faiss_index"
-vector_store.save_local(faiss_index_path)
+# Example: test embedding call (optional)
+response = embeddings_client.embeddings.create(
+    input="Hello world from Himanshu!",
+    model=EMBEDDINGS_DEPLOYMENT_NAME
+)
 
-print(f"✅ Embeddings created and FAISS index saved at: {faiss_index_path}")
+print("Embedding created successfully! Dimensions:", len(response.data[0].embedding))
